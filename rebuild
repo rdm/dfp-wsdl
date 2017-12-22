@@ -1,0 +1,84 @@
+#!/bin/sh
+
+mkdir -p types
+mkdir -p operations
+
+VERSION=$(cat VERSION)
+
+getOperation() {
+	name=$1
+	set ''
+	for wsdl in *wsdl; do
+		if grep "<wsdl:operation name=\"$name\"" >/dev/null $wsdl; then
+			(
+				sed -n "/<wsdl:operation.*name=\"$name\"/,/<\\/wsdl:operation/p" *wsdl
+			) >>t
+			sha=$(shasum <t | awk '{print $1}')
+			case "$*" in
+				$sha) :;;
+				*) set $* $sha;;
+			esac
+			echo "<!-- https://ads.google.com/apis/ads/publisher/$VERSION/$wsdl -->" >>$sha.comment
+			mv t $sha.body
+		fi
+		for sha in $*; do
+			cat $sha.comment $sha.body
+		done >operations/$name.xml
+	done
+}
+
+getType() {
+	name=$1
+	set ''
+	for wsdl in *wsdl; do
+		if grep "Type name=\"$name\"" >/dev/null $wsdl; then
+			(
+				sed -n "/<complexType.*name=\"$name\"/,/<\\/complexType/p" *wsdl
+				sed -n "/<simpleType.*name=\"$name\"/,/<\\/simpleType/p" *wsdl
+			) >>t
+			sha=$(shasum <t | awk '{print $1}')
+			case "$*" in
+				$sha) :;;
+				*) set $* $sha;;
+			esac
+			echo "<!-- https://ads.google.com/apis/ads/publisher/$VERSION/$wsdl -->" >>$sha.comment
+			mv t $sha.body
+		fi
+		for sha in $*; do
+			cat $sha.comment $sha.body
+		done >types/$name.xml
+	done
+}
+
+for wsdl in \
+	https://ads.google.com/apis/ads/publisher/$VERSION/LineItemService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/CustomFieldService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/CustomTargetingService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/PublisherQueryLanguageService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/OrderService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/UserService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/NetworkService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/CompanyService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/CreativeService?wsdl \
+	https://ads.google.com/apis/ads/publisher/$VERSION/LineItemCreativeAssociationService?wsdl
+do
+	wget $wsdl
+done
+
+cat *wsdl |
+	grep 'Type name=' |
+	cut -f2 -d'"' |
+	sort -u |
+	while read type; do
+		getType $type
+	done
+
+cat *wsdl |
+	grep 'operation name=' |
+	cut -f2 -d'"' |
+	sort -u |
+	while read op; do
+		getOperation $op
+	done
+
+rm *.body *.comment
